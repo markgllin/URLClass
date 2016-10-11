@@ -11,6 +11,7 @@ import java.io.*;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
+import java.util.Base64;
 
 public class UrlCache {
 
@@ -92,7 +93,7 @@ public class UrlCache {
         try{
             //open input+output streams
             Socket request = new Socket(parsedUrl[HOST], Integer.parseInt(parsedUrl[PORT]));
-            BufferedReader in = new BufferedReader(new InputStreamReader(request.getInputStream()));
+            InputStream in = request.getInputStream();
 
             //send http request to server
             request.getOutputStream().write(parsedUrl[REQ].getBytes("US-ASCII"));
@@ -105,18 +106,14 @@ public class UrlCache {
                 throw new IllegalStateException("Couldn't create dir: " + parent);
 
             //check html header to see if cached data is up to date
-            String output;
-            String header = "";
+            String header;
+            int offset = 0;
+            byte[] byteHeader = new byte[2048];
 
-            while((output = in.readLine()) != null){
-                header += output + "\r\n";
-
-                if(output.contains("Last-Modified: ")){
-                    String[] parts = output.split(":", 2);
-                    date =  parts[1].trim();      
-                }
-                if(header.contains("\r\n\r\n"))
-                    break;
+            while(true){
+                in.read(byteHeader, offset++, 1);
+                header = new String(byteHeader, 0, offset,"US-ASCII");
+                if(header.contains("\r\n\r\n")) break;
             }
 
             if(!header.contains("304 Not Modified")){
@@ -124,14 +121,30 @@ public class UrlCache {
                 urlObject.delete();
                 urlObject.createNewFile();
 
-                PrintWriter urlOutStream = new PrintWriter(
-                    new BufferedWriter(
-                        new FileWriter("cache/"+url, true)));
-            
+                int length = 0;
+
+System.out.println(header);
+
+                String[] headerParsed = header.split("\r\n");
+                for (String s : headerParsed){
+                    if (s.contains("Content-Length: ")){
+                        String[] entityLen = s.split(" ");
+                        length = Integer.parseInt(entityLen[1]);
+                        break;
+                    }
+
+                    if (s.contains("Last-Modified: ")){
+                        String[] lastModded = s.split(":", 2);
+                        date =  lastModded[1].trim();
+                    }
+                }
+
+                byte[] entity = new byte[length];
+                in.read(entity);
+
                 //write response from server to file
-                while((output = in.readLine()) != null)
-                    urlOutStream.println(output);
-                
+                FileOutputStream urlOutStream = new FileOutputStream("cache/"+url);
+                urlOutStream.write(Base64.getDecoder().decode(entity));
                 urlOutStream.close();
 
                 //update hashmap and catalog
