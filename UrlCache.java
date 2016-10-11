@@ -123,28 +123,32 @@ public class UrlCache {
 
                 int length = 0;
 
-System.out.println(header);
-
                 String[] headerParsed = header.split("\r\n");
                 for (String s : headerParsed){
+                    //parse for content length
                     if (s.contains("Content-Length: ")){
                         String[] entityLen = s.split(" ");
                         length = Integer.parseInt(entityLen[1]);
                         break;
                     }
 
+                    //parse for last modified date
                     if (s.contains("Last-Modified: ")){
                         String[] lastModded = s.split(":", 2);
                         date =  lastModded[1].trim();
                     }
                 }
 
+                //read entity into array
                 byte[] entity = new byte[length];
-                in.read(entity);
+                offset=0;
+  
+                while(offset<length)
+                    in.read(entity, offset++, 1);
 
                 //write response from server to file
                 FileOutputStream urlOutStream = new FileOutputStream("cache/"+url);
-                urlOutStream.write(Base64.getDecoder().decode(entity));
+                urlOutStream.write(entity);
                 urlOutStream.close();
 
                 //update hashmap and catalog
@@ -156,6 +160,9 @@ System.out.println(header);
 
                 catalogOutstream.println(url + "_"+ date);
                 catalogOutstream.close();
+            
+                request.close();
+                
             }
 
         }catch(NumberFormatException | IOException e){
@@ -232,36 +239,4 @@ System.out.println(header);
             return 0;
         }
     }
-
-    /**
-     * Returns date in the form of a string after parsing it from the local file structure
-     * specified by 'url'.
-     * 
-     * @param url   urlpath in local cache that points to the url object
-     * @returns time in the format 'EEE, dd MMM yyyy hh:mm:ss zzz'
-     * @returns null if date cannot be found in file or if IOException occurs
-     */
-    public String parseLastModified(String url){
-        String line;
-
-        try{
-            //read file and parse for last-modified date
-            BufferedReader br = new BufferedReader(new FileReader("cache/" + url));
-            while((line = br.readLine()) != null){
-                if(line.contains("Last-Modified:")){
-                    System.out.println(line);
-                    String[] parts = line.split(":", 2);
-                    return parts[1].trim();
-                }
-            }
-
-            br.close();
-
-        }catch(IOException e){
-            System.out.println("incorrect path");
-        }
-
-        return null;
-    }
-
 }
