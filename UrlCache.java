@@ -11,36 +11,10 @@ import java.io.*;
 import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
-import java.util.Base64;
 
 public class UrlCache {
 
     private static HashMap<String,String> catalog = new HashMap<String, String>();
-	public static void main(String[] args) {
-
-		// include whatever URL you like
-		// these are just some samples
-		String[] url = {"people.ucalgary.ca/~mghaderi/index.html",
-						"people.ucalgary.ca/~mghaderi/test/uc.gif",
-						"people.ucalgary.ca/~mghaderi/test/a.pdf",
-						"people.ucalgary.ca:80/~mghaderi/test/test.html"};
-		
-		// this is a very basic tester
-		// the TAs will use a more comprehensive set of tests
-		try {
-			UrlCache cache = new UrlCache();
-			
-			for (int i = 0; i < url.length; i++)
-				cache.getObject(url[i]);
-			
-			System.out.println("Last-Modified for " + url[0] + " is: " + cache.getLastModified(url[0]));
-			cache.getObject(url[0]);
-			System.out.println("Last-Modified for " + url[0] + " is: " + cache.getLastModified(url[0]));
-		}
-		catch (UrlCacheException e) {
-			System.out.println("There was a problem: " + e.getMessage());
-		}
-	}
 
     /**
      * Default constructor to initialize data structures used for caching/etc
@@ -70,7 +44,6 @@ public class UrlCache {
                 if (date==null || convertDateToLong(date) < convertDateToLong(parts[1]))
                     catalog.put(parts[0], parts[1]);
             }
-
         }catch(IOException e){
             e.printStackTrace();
         }
@@ -86,6 +59,7 @@ public class UrlCache {
         int HOST = 0;
         int PORT = 1;
         int REQ = 2;
+        int PATH = 3;
         String date = "Thu, 01 Jan 1970 00:00:00 UTC";
 
         String[] parsedUrl = parseUrl(url);
@@ -100,7 +74,7 @@ public class UrlCache {
             request.getOutputStream().flush();
 
             //create directory structuce for objects to be downloaded
-            File urlObject = new File("cache/"+url);
+            File urlObject = new File("cache/"+parsedUrl[HOST]+parsedUrl[PATH]);
             File parent = urlObject.getParentFile();
             if(!parent.exists() && !parent.mkdirs())
                 throw new IllegalStateException("Couldn't create dir: " + parent);
@@ -142,29 +116,25 @@ public class UrlCache {
                 //read entity into array
                 byte[] entity = new byte[length];
                 offset=0;
-  
-                while(offset<length)
-                    in.read(entity, offset++, 1);
+                while(offset<length) in.read(entity, offset++, 1);
 
                 //write response from server to file
-                FileOutputStream urlOutStream = new FileOutputStream("cache/"+url);
+                FileOutputStream urlOutStream = new FileOutputStream("cache/"+parsedUrl[HOST]+parsedUrl[PATH]);
                 urlOutStream.write(entity);
                 urlOutStream.close();
 
                 //update hashmap and catalog
-                catalog.put(url, date);
+                catalog.put(parsedUrl[HOST]+parsedUrl[PATH], date);
 
                 PrintWriter catalogOutstream = new PrintWriter(
                         new BufferedWriter(
                             new FileWriter("cache/catalog", true)));
 
-                catalogOutstream.println(url + "_"+ date);
+                catalogOutstream.println(parsedUrl[HOST]+parsedUrl[PATH] + "_"+ date);
                 catalogOutstream.close();
             
                 request.close();
-                
             }
-
         }catch(NumberFormatException | IOException e){
             e.printStackTrace();
         }
@@ -196,7 +166,7 @@ public class UrlCache {
         }
 
         //get last modified date
-        lastModified = catalog.get(url); 
+        lastModified = catalog.get(host+filepath); 
         
         if(lastModified == null)
             lastModified = "Thu, 01 Jan 1970 00:00:00 UTC";
@@ -207,7 +177,7 @@ public class UrlCache {
                         + "If-Modified-Since: " + lastModified + "\r\n"
                         + "\r\n";
         
-        return new String[] {host, port, fullRequest};
+        return new String[] {host, port, fullRequest, filepath};
     }
 	
     /**
@@ -218,6 +188,11 @@ public class UrlCache {
      * @throws UrlCacheException if the specified url is not in the cache, or there are other errors/exceptions
      */
 	public long getLastModified(String url) throws UrlCacheException {
+        if (url.contains(":")){
+            String[] parts = url.split(":", 2);
+            url = parts[0] + parts[1];
+        }
+
         try{
             return new SimpleDateFormat("EEE, dd MMM yyyy hh:mm:ss zzz").parse(catalog.get(url)).getTime();
         }catch(ParseException e){
